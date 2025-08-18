@@ -14,9 +14,9 @@ def load_and_preprocess(path, features, label_col):
     scaler = StandardScaler()
     df['y'] = y_encoder.fit_transform(df[label_col])
     df['OriginLocation'] = origin_encoder.fit_transform(df['OriginLocation'])
-    X = scaler.fit_transform(df[features])
+    x = scaler.fit_transform(df[features])
     y = df['y'].values
-    return X, y
+    return x, y
 
 
 def split_per_class(X, y, train_per_class, test_per_class):
@@ -29,24 +29,22 @@ def split_per_class(X, y, train_per_class, test_per_class):
         train_indices.extend(class_indices[:train_per_class].tolist())
         remaining_indices = class_indices.size - train_per_class
         test_indices.extend(class_indices[train_per_class:train_per_class + remaining_indices].tolist())
-    X_train = X[train_indices]
+    x_train = X[train_indices]
     y_train = y[train_indices]
-    X_test = X[test_indices]
+    x_test = X[test_indices]
     y_test = y[test_indices]
-    return X_train, y_train, X_test, y_test
+    return x_train, y_train, x_test, y_test
 
 
 def initialize_layers(neurons_each_level, bias=True):
     params = {}
     for i in range(1, len(neurons_each_level)):
-        n_l = neurons_each_level[i]
-        n_prev = neurons_each_level[i - 1]
-        # Xavier/Glorot uniform
-        limit = np.sqrt(6.0 / (n_prev + n_l))
-        W = np.random.uniform(-limit, limit, size=(n_l, n_prev))
-        params[f'weight{i}'] = W
+        neurons_now = neurons_each_level[i]
+        neurons_pre = neurons_each_level[i - 1]
+        lim = np.sqrt(6 / (neurons_pre + neurons_now))
+        params[f'weight{i}'] = np.random.uniform(-lim, lim, (neurons_now, neurons_pre))
         if bias:
-            params[f'bias{i}'] = np.zeros((n_l, 1))
+            params[f'bias{i}'] = np.random.uniform(-lim, lim, (neurons_now, 1))
     return params
 
 
@@ -65,12 +63,12 @@ def activation_deriv(net, function='Sigmoid', a=1.0, b=1.0):
 
 
 def softmax(net):
-    res = np.exp(net - np.max(net, axis=0, keepdims=True))
-    return res / np.sum(res, axis=0, keepdims=True)
+    res = np.exp(net - np.max(net, axis=0))
+    return res / np.sum(res, axis=0)
 
 
-def forward_propagation(X, parameters, function, bias):
-    results = {f'layer{0}': X.T}
+def forward_propagation(x, parameters, function, bias):
+    results = {f'layer_out{0}': x.T}
     if bias:
         weight_counts = int(len(parameters) / 2)
     else:
@@ -78,7 +76,7 @@ def forward_propagation(X, parameters, function, bias):
 
     for i in range(1, weight_counts + 1):
         W = parameters[f'weight{i}']
-        A_prev = results[f'layer{i - 1}']
+        A_prev = results[f'layer_out{i - 1}']
 
         if bias:
             net = W.dot(A_prev) + parameters[f'bias{i}']
@@ -89,28 +87,28 @@ def forward_propagation(X, parameters, function, bias):
             activated = activation(net, function)
         else:
             activated = softmax(net)
-        results[f'layer{i}'] = activated
-    return results[f'layer{weight_counts}'], results
+        results[f'layer_out{i}'] = activated
+    return results[f'layer_out{weight_counts}'], results
 
 
 def backward_propagation(y_true, parameters, results, function, bias):
     grads = {}
-    m = results['layer0'].shape[1]
+    m = results['layer_out0'].shape[1]
     L = sum(1 for k in parameters if k.startswith('w'))
     # determine number of output classes from last W
     output_neurons = parameters[f'weight{L}'].shape[0]
     # one-hot encode
     Y = np.eye(output_neurons)[y_true].T
-    A_L = results[f'layer{L}']
+    A_L = results[f'layer_out{L}']
     # derivative for softmax + cross-entropy
     dA = A_L - Y
     for l in reversed(range(1, L + 1)):
-        A_prev = results[f'layer{l - 1}']
+        A_prev = results[f'layer_out{l - 1}']
         dW = (1 / m) * dA.dot(A_prev.T)
         db = (1 / m) * np.sum(dA, axis=1, keepdims=True) if bias else None
         grads[f'dW{l}'], grads[f'db{l}'] = dW, db
         if l > 1:
-            dA = parameters[f'weight{l}'].T.dot(dA) * activation_deriv(results[f'layer{l - 1}'], function)
+            dA = parameters[f'weight{l}'].T.dot(dA) * activation_deriv(results[f'layer_out{l - 1}'], function)
     return grads
 
 
@@ -122,7 +120,7 @@ def update_parameters(parameters, grads, lr, bias):
             parameters[f'bias{l}'] -= lr * grads[f'db{l}']
 
 
-def train_nn(X, y, neurons_each_level, lr, epochs, function='Sigmoid', bias=True):
+def train_nn(X, y, neurons_each_level, lr, epochs, function, bias=True):
     parameters = initialize_layers(neurons_each_level, bias)
     for i in range(epochs):
         AL, results = forward_propagation(X, parameters, function, bias)
@@ -151,22 +149,27 @@ def main():
     activation_function = str(activation_function_combobox.get())
     bias = bool(bias_choice.get())
 
-    X, y = load_and_preprocess(data_path, features, label_col)
+    x, y = load_and_preprocess(data_path, features, label_col)
 
-    X_train, y_train, X_test, y_test = split_per_class(X, y, 30, 20)
+    x_train, y_train, x_test, y_test = split_per_class(x, y, 30, 20)
 
-    all_layers_network = [X_train.shape[1]] + neurons_per_hidden + [len(np.unique(y))]
+    all_layers_network = [x_train.shape[1]] + neurons_per_hidden + [len(np.unique(y))]
 
-    parameters = train_nn(X_train, y_train, all_layers_network, lr, epochs, activation_function, bias)
+    parameters = train_nn(x_train, y_train, all_layers_network, lr, epochs, activation_function, bias)
 
-    y_pred = predict(X_test, parameters, activation_function, bias)
+    y_pred = predict(x_test, parameters, activation_function, bias)
 
-    cm = confusion_matrix(y_test, y_pred)
-    acc = accuracy_score(y_test, y_pred)
+    confusion_mat = confusion_matrix(y_test, y_pred)
+    accuracy = accuracy_score(y_test, y_pred)
 
-    print('Confusion Matrix:')
-    print(cm)
-    print(f'Overall Accuracy: {acc:.4f}')
+    results_text.configure(state='normal')
+    results_text.delete('1.0', tk.END)
+    results_text.insert(tk.END, "Confusion Matrix:\n")
+    for i in confusion_mat:
+        results_text.insert(tk.END, f"{i}\n")
+    results_text.insert(tk.END, f"\nOverall Accuracy: {accuracy:.4f}\n")
+    results_text.see(tk.END)
+    results_text.configure(state='disabled')
 
 
 root = tk.Tk()
@@ -218,5 +221,9 @@ activation_function_combobox.set(value="Sigmoid")
 generate_button = tk.Button(control_frame, text='Run', command=main, bg='red',
                             font=("Helvetica", 12), width=25)
 generate_button.grid(row=6, column=1, pady=5)
+
+results_text = tk.Text(control_frame, height=8, width=60, font=("Courier", 10))
+results_text.grid(row=7, column=0, columnspan=2, pady=8, padx=4)
+results_text.configure(state='normal')
 
 root.mainloop()

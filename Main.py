@@ -7,7 +7,6 @@ from tkinter import ttk
 
 def confusion_matrix(y_true, y_pred, num_classes):
     cm = np.zeros((num_classes, num_classes), dtype=int)
-    # normal for-loop (index-based) instead of zip
     n = len(y_true)
     for i in range(n):
         t = int(y_true[i])
@@ -73,10 +72,10 @@ def one_hot(y, num_classes=None):
     if num_classes is None:
         num_classes = np.max(y) + 1
     m = y.shape[0]
-    one_hot = np.zeros((num_classes, m))
+    arr = np.zeros((num_classes, m))
     for i, v in enumerate(y):
-        one_hot[v, i] = 1
-    return one_hot
+        arr[v, i] = 1
+    return arr
 
 
 def activation(net, function, a=1.0, b=1.0):
@@ -119,10 +118,10 @@ def backward_propagation(y_true, parameters, results, function, bias):
         layers_count = int(len(parameters) / 2)
     else:
         layers_count = len(parameters)
-    AL = results[f'layer_out{layers_count}']
+    last_output = results[f'layer_out{layers_count}']
     y_one = one_hot(y_true, 3)
     sigmas = {}
-    sigma = (y_one - AL) * activation_deriv(AL, function)
+    sigma = (y_one - last_output) * activation_deriv(last_output, function)
     sigmas[f'sigma{layers_count}'] = sigma
     for i in reversed(range(1, layers_count)):
         W_next = parameters[f'weight{i + 1}']
@@ -151,15 +150,15 @@ def update_parameters(parameters, sigmas, results, lr, bias):
 def train_nn(X, y, neurons_each_level, lr, epochs, function, bias=True):
     parameters = initialize_layers(neurons_each_level, bias)
     for i in range(epochs):
-        AL, results = forward_propagation(X, parameters, function, bias)
+        last_output, results = forward_propagation(X, parameters, function, bias)
         sigmas, results, parameters = backward_propagation(y, parameters, results, function, bias)
         update_parameters(parameters, sigmas, results, lr, bias)
     return parameters
 
 
 def predict(X, parameters, function, bias):
-    AL, _ = forward_propagation(X, parameters, function, bias)
-    return np.argmax(AL, axis=0)
+    last_output, _ = forward_propagation(X, parameters, function, bias)
+    return np.argmax(last_output, axis=0)
 
 
 def main():

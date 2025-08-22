@@ -6,6 +6,26 @@ import tkinter as tk
 from tkinter import ttk
 
 
+def confusion_matrix(y_true, y_pred, num_classes):
+    print(y_true)
+    print(y_pred)
+    cm = np.zeros((num_classes, num_classes), dtype=int)
+    for t, p in zip(y_true, y_pred):
+        cm[int(t), int(p)] += 1
+    return cm
+
+
+def accuracy_cal(y_true, y_pred):
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    matches = 0
+    for i in range(n):
+        if int(y_true[i]) == int(y_pred[i]):
+            matches += 1
+    return matches / n
+
+
 def load_and_preprocess(path, features, label_col):
     df = pd.read_csv(path)
     df = df.fillna(df.mean(numeric_only=True))
@@ -165,12 +185,14 @@ def main():
     parameters = train_nn(x_train, y_train, all_layers_network, lr, epochs, activation_function, bias)
 
     y_pred = predict(x_test, parameters, activation_function, bias)
-    confusion_mat = confusion_matrix(y_test, y_pred)
-    accuracy = accuracy_score(y_test, y_pred)
+
+    confusion_mat = confusion_matrix(y_test, y_pred, 3)
+    accuracy = accuracy_cal(y_test, y_pred)
+
     results_text.configure(state='normal')
     results_text.delete('1.0', tk.END)
     results_text.insert(tk.END, "Confusion Matrix:\n")
-    results_text.insert(tk.END, f"{confusion_mat[0]}\n{confusion_mat[1]}")
+    results_text.insert(tk.END, f"{confusion_mat[0]}\n{confusion_mat[1]}\n{confusion_mat[2]}")
     results_text.insert(tk.END, f"\nOverall Accuracy: {accuracy:.4f}\n")
     results_text.see(tk.END)
     results_text.configure(state='disabled')

@@ -8,7 +8,7 @@ from tkinter import ttk
 
 def load_and_preprocess(path, features, label_col):
     df = pd.read_csv(path)
-    df = df.dropna()
+    df = df.fillna(df.mean(numeric_only=True))
     y_encoder = LabelEncoder()
     origin_encoder = LabelEncoder()
     scaler = StandardScaler()
@@ -27,8 +27,7 @@ def split_per_class(X, y, train_per_class, test_per_class):
         class_indices = np.where(y == i)[0]
         np.random.shuffle(class_indices)
         train_indices.extend(class_indices[:train_per_class].tolist())
-        remaining_indices = class_indices.size - train_per_class
-        test_indices.extend(class_indices[train_per_class:train_per_class + remaining_indices].tolist())
+        test_indices.extend(class_indices[train_per_class:train_per_class + test_per_class].tolist())
     x_train = X[train_indices]
     y_train = y[train_indices]
     x_test = X[test_indices]
@@ -48,6 +47,17 @@ def initialize_layers(neurons_each_level, bias=True):
     return params
 
 
+def one_hot(y, num_classes=None):
+    y = np.array(y).astype(int).ravel()
+    if num_classes is None:
+        num_classes = np.max(y) + 1
+    m = y.shape[0]
+    one_hot = np.zeros((num_classes, m))
+    for i, v in enumerate(y):
+        one_hot[v, i] = 1
+    return one_hot
+
+
 def activation(net, function, a=1.0, b=1.0):
     if function == 'Sigmoid':
         return 1.0 / (1.0 + np.exp(-net))
@@ -55,77 +65,74 @@ def activation(net, function, a=1.0, b=1.0):
         return a * np.tanh(b * net)
 
 
-def activation_deriv(net, function='Sigmoid', a=1.0, b=1.0):
+def activation_deriv(out, function, a=1.0, b=1.0):
     if function == 'Sigmoid':
-        return activation(net, function) * (1 - activation(net, function))
+        return out * (1 - out)
     elif function == 'Hyperbolic Tangent sigmoid':
-        return (a / b) * (a - activation(net, function)) * (a + activation(net, function))
-
-
-def softmax(net):
-    res = np.exp(net - np.max(net, axis=0))
-    return res / np.sum(res, axis=0)
+        return (a / b) * (a - out) * (a + out)
 
 
 def forward_propagation(x, parameters, function, bias):
     results = {f'layer_out{0}': x.T}
     if bias:
-        weight_counts = int(len(parameters) / 2)
+        layers_count = int(len(parameters) / 2)
     else:
-        weight_counts = len(parameters)
+        layers_count = len(parameters)
 
-    for i in range(1, weight_counts + 1):
+    for i in range(1, layers_count + 1):
         W = parameters[f'weight{i}']
-        A_prev = results[f'layer_out{i - 1}']
+        out_prev = results[f'layer_out{i - 1}']
 
         if bias:
-            net = W.dot(A_prev) + parameters[f'bias{i}']
+            net = W.dot(out_prev) + parameters[f'bias{i}']
         else:
-            net = W.dot(A_prev)
+            net = W.dot(out_prev)
 
-        if i < weight_counts:
-            activated = activation(net, function)
-        else:
-            activated = softmax(net)
-        results[f'layer_out{i}'] = activated
-    return results[f'layer_out{weight_counts}'], results
+        activated_res = activation(net, function)
+        results[f'layer_out{i}'] = activated_res
+    return results[f'layer_out{layers_count}'], results
 
 
 def backward_propagation(y_true, parameters, results, function, bias):
-    grads = {}
-    m = results['layer_out0'].shape[1]
-    L = sum(1 for k in parameters if k.startswith('w'))
-    # determine number of output classes from last W
-    output_neurons = parameters[f'weight{L}'].shape[0]
-    # one-hot encode
-    Y = np.eye(output_neurons)[y_true].T
-    A_L = results[f'layer_out{L}']
-    # derivative for softmax + cross-entropy
-    dA = A_L - Y
-    for l in reversed(range(1, L + 1)):
-        A_prev = results[f'layer_out{l - 1}']
-        dW = (1 / m) * dA.dot(A_prev.T)
-        db = (1 / m) * np.sum(dA, axis=1, keepdims=True) if bias else None
-        grads[f'dW{l}'], grads[f'db{l}'] = dW, db
-        if l > 1:
-            dA = parameters[f'weight{l}'].T.dot(dA) * activation_deriv(results[f'layer_out{l - 1}'], function)
-    return grads
+    if bias:
+        layers_count = int(len(parameters) / 2)
+    else:
+        layers_count = len(parameters)
+    AL = results[f'layer_out{layers_count}']
+    y_one = one_hot(y_true, 3)
+    sigmas = {}
+    sigma = (y_one - AL) * activation_deriv(AL, function)
+    sigmas[f'sigma{layers_count}'] = sigma
+    for i in reversed(range(1, layers_count)):
+        W_next = parameters[f'weight{i + 1}']
+        sigma = (W_next.T.dot(sigma)) * activation_deriv(results[f'layer_out{i}'], function)
+        sigmas[f'sigma{i}'] = sigma
+
+    return sigmas, results, parameters
 
 
-def update_parameters(parameters, grads, lr, bias):
-    L = sum(1 for k in parameters if k.startswith('w'))
-    for l in range(1, L + 1):
-        parameters[f'weight{l}'] -= lr * grads[f'dW{l}']
+def update_parameters(parameters, sigmas, results, lr, bias):
+    if bias:
+        layers_count = int(len(parameters) / 2)
+    else:
+        layers_count = len(parameters)
+
+    for i in range(1, layers_count + 1):
+        sigma = sigmas[f'sigma{i}']
+        prev_out = results[f'layer_out{i - 1}']
+
+        parameters[f'weight{i}'] += lr * sigma.dot(prev_out.T)
+
         if bias:
-            parameters[f'bias{l}'] -= lr * grads[f'db{l}']
+            parameters[f'bias{i}'] += lr * np.sum(sigma, axis=1, keepdims=True)
 
 
 def train_nn(X, y, neurons_each_level, lr, epochs, function, bias=True):
     parameters = initialize_layers(neurons_each_level, bias)
     for i in range(epochs):
         AL, results = forward_propagation(X, parameters, function, bias)
-        grads = backward_propagation(y, parameters, results, function, bias)
-        update_parameters(parameters, grads, lr, bias)
+        sigmas, results, parameters = backward_propagation(y, parameters, results, function, bias)
+        update_parameters(parameters, sigmas, results, lr, bias)
     return parameters
 
 
@@ -158,15 +165,12 @@ def main():
     parameters = train_nn(x_train, y_train, all_layers_network, lr, epochs, activation_function, bias)
 
     y_pred = predict(x_test, parameters, activation_function, bias)
-
     confusion_mat = confusion_matrix(y_test, y_pred)
     accuracy = accuracy_score(y_test, y_pred)
-
     results_text.configure(state='normal')
     results_text.delete('1.0', tk.END)
     results_text.insert(tk.END, "Confusion Matrix:\n")
-    for i in confusion_mat:
-        results_text.insert(tk.END, f"{i}\n")
+    results_text.insert(tk.END, f"{confusion_mat[0]}\n{confusion_mat[1]}")
     results_text.insert(tk.END, f"\nOverall Accuracy: {accuracy:.4f}\n")
     results_text.see(tk.END)
     results_text.configure(state='disabled')

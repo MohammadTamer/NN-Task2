@@ -39,7 +39,7 @@ def load_and_preprocess(path, features, label_col):
     return x, y
 
 
-def split_per_class(X, y, train_per_class, test_per_class):
+def split_per_class(x, y, train_per_class, test_per_class):
     classes = np.unique(y)
     train_indices = []
     test_indices = []
@@ -48,9 +48,9 @@ def split_per_class(X, y, train_per_class, test_per_class):
         np.random.shuffle(class_indices)
         train_indices.extend(class_indices[:train_per_class].tolist())
         test_indices.extend(class_indices[train_per_class:train_per_class + test_per_class].tolist())
-    x_train = X[train_indices]
+    x_train = x[train_indices]
     y_train = y[train_indices]
-    x_test = X[test_indices]
+    x_test = x[test_indices]
     y_test = y[test_indices]
     return x_train, y_train, x_test, y_test
 
@@ -100,13 +100,13 @@ def forward_propagation(x, parameters, function, bias):
         layers_count = len(parameters)
 
     for i in range(1, layers_count + 1):
-        W = parameters[f'weight{i}']
+        w = parameters[f'weight{i}']
         out_prev = results[f'layer_out{i - 1}']
 
         if bias:
-            net = W.dot(out_prev) + parameters[f'bias{i}']
+            net = w.dot(out_prev) + parameters[f'bias{i}']
         else:
-            net = W.dot(out_prev)
+            net = w.dot(out_prev)
 
         activated_res = activation(net, function)
         results[f'layer_out{i}'] = activated_res
@@ -124,8 +124,8 @@ def backward_propagation(y_true, parameters, results, function, bias):
     sigma = (y_one - last_output) * activation_deriv(last_output, function)
     sigmas[f'sigma{layers_count}'] = sigma
     for i in reversed(range(1, layers_count)):
-        W_next = parameters[f'weight{i + 1}']
-        sigma = (W_next.T.dot(sigma)) * activation_deriv(results[f'layer_out{i}'], function)
+        w_next = parameters[f'weight{i + 1}']
+        sigma = (w_next.T.dot(sigma)) * activation_deriv(results[f'layer_out{i}'], function)
         sigmas[f'sigma{i}'] = sigma
 
     return sigmas, results, parameters
@@ -147,17 +147,17 @@ def update_parameters(parameters, sigmas, results, lr, bias):
             parameters[f'bias{i}'] += lr * np.sum(sigma, axis=1, keepdims=True)
 
 
-def train_nn(X, y, neurons_each_level, lr, epochs, function, bias=True):
+def train_nn(x, y, neurons_each_level, lr, epochs, function, bias=True):
     parameters = initialize_layers(neurons_each_level, bias)
     for i in range(epochs):
-        last_output, results = forward_propagation(X, parameters, function, bias)
+        last_output, results = forward_propagation(x, parameters, function, bias)
         sigmas, results, parameters = backward_propagation(y, parameters, results, function, bias)
         update_parameters(parameters, sigmas, results, lr, bias)
     return parameters
 
 
-def predict(X, parameters, function, bias):
-    last_output, _ = forward_propagation(X, parameters, function, bias)
+def predict(x, parameters, function, bias):
+    last_output, _ = forward_propagation(x, parameters, function, bias)
     return np.argmax(last_output, axis=0)
 
 

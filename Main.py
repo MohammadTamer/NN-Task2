@@ -1,17 +1,18 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix, accuracy_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 import tkinter as tk
 from tkinter import ttk
 
 
 def confusion_matrix(y_true, y_pred, num_classes):
-    print(y_true)
-    print(y_pred)
     cm = np.zeros((num_classes, num_classes), dtype=int)
-    for t, p in zip(y_true, y_pred):
-        cm[int(t), int(p)] += 1
+    # normal for-loop (index-based) instead of zip
+    n = len(y_true)
+    for i in range(n):
+        t = int(y_true[i])
+        p = int(y_pred[i])
+        cm[t, p] += 1
     return cm
 
 

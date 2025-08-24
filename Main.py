@@ -118,8 +118,8 @@ def backward_propagation(y_true, parameters, results, function, bias):
         layers_count = int(len(parameters) / 2)
     else:
         layers_count = len(parameters)
-    last_output = results[f'layer_out{layers_count}']
     y_one = one_hot(y_true, 3)
+    last_output = results[f'layer_out{layers_count}']
     sigmas = {}
     sigma = (y_one - last_output) * activation_deriv(last_output, function)
     sigmas[f'sigma{layers_count}'] = sigma
@@ -136,7 +136,6 @@ def update_parameters(parameters, sigmas, results, lr, bias):
         layers_count = int(len(parameters) / 2)
     else:
         layers_count = len(parameters)
-
     for i in range(1, layers_count + 1):
         sigma = sigmas[f'sigma{i}']
         prev_out = results[f'layer_out{i - 1}']
@@ -185,15 +184,18 @@ def main():
     parameters = train_nn(x_train, y_train, all_layers_network, lr, epochs, activation_function, bias)
 
     y_pred = predict(x_test, parameters, activation_function, bias)
+    y_train_pred = predict(x_train, parameters, activation_function, bias)
 
     confusion_mat = confusion_matrix(y_test, y_pred, 3)
-    accuracy = accuracy_cal(y_test, y_pred)
+    train_accuracy = accuracy_cal(y_train_pred, y_train)
+    test_accuracy = accuracy_cal(y_test, y_pred)
 
     results_text.configure(state='normal')
     results_text.delete('1.0', tk.END)
     results_text.insert(tk.END, "Confusion Matrix:\n")
     results_text.insert(tk.END, f"{confusion_mat[0]}\n{confusion_mat[1]}\n{confusion_mat[2]}")
-    results_text.insert(tk.END, f"\nOverall Accuracy: {accuracy:.4f}\n")
+    results_text.insert(tk.END, f"\nTrain Accuracy: {train_accuracy:.4f}\n")
+    results_text.insert(tk.END, f"\nTest Accuracy: {test_accuracy:.4f}\n")
     results_text.see(tk.END)
     results_text.configure(state='disabled')
 
